@@ -2,7 +2,7 @@ const wrtc = require('@roamhq/wrtc');
 const e = require('express');
 
 class WebRTCConnectionManager {
-    constructor(id, handler, shouldReconnect=false) {
+    constructor(id, handler, servers, shouldReconnect=false) {
         this.id = id;
         this.handler = handler;
         this.isClosing = false;
@@ -12,11 +12,11 @@ class WebRTCConnectionManager {
             throw new Error("Handler is missing required methods");
         }
 
-        this.setupConnection();
+        this.setupConnection(servers);
     }
 
-    async setupConnection() {
-        this.peerConnection = new wrtc.RTCPeerConnection();
+    setupConnection(servers) {
+        this.peerConnection = new wrtc.RTCPeerConnection(servers);
         
         this.iceCandidates = [];
         this.peerConnection.onicecandidate = (event) => {
