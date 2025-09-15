@@ -32,6 +32,7 @@ app.post(`${prefix}/new-connection`, async (req, res) => {
   console.log('Creating new connection');
   const handler = getHandler('default');
   const newConnection = new WebRTCConnectionManager(currId++, handler);
+  newConnection.setupConnection();
   connections[newConnection.id] = newConnection;
   res.send(
     { id: newConnection.id, offer: await newConnection.getOffer() },
