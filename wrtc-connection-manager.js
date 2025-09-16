@@ -1,12 +1,10 @@
 const wrtc = require('@roamhq/wrtc');
-const e = require('express');
 
 class WebRTCConnectionManager {
-    constructor(id, handler, servers, shouldReconnect=false) {
+    constructor(id, handler, servers) {
         this.id = id;
         this.handler = handler;
         this.isClosing = false;
-        this.shouldReconnect = shouldReconnect;
 
         if (!this.handler.onSignalMessage || !this.handler.onDataMessage) {
             throw new Error("Handler is missing required methods");
@@ -25,11 +23,13 @@ class WebRTCConnectionManager {
             }
         };
 
-        this.signalingChannel = this.peerConnection.createDataChannel("signaling", { reliable: true });
-        this.signalingChannel.onmessage = (event) => this.onSignalMessage(event.data);
 
-        this.dataChannel = this.peerConnection.createDataChannel("data", { reliable: false });
-        this.dataChannel.onmessage = (event) => this.handler.onDataMessage(event.data);
+        this.signaling = this.peerConnection.createDataChannel("signaling", { reliable: true });
+        this.signaling.onmessage = (event) => this.onSignalMessage(event.data);
+        this.signaling.onclose = (event) => this.onClose(event);
+
+        this.data = this.peerConnection.createDataChannel("data", { reliable: false });
+        this.data.onmessage = (event) => this.handler.onDataMessage(event.data);
     }
 
     onSignalMessage(messageData) {
@@ -47,15 +47,18 @@ class WebRTCConnectionManager {
                 if (this.handler.onReconnect) this.handler.onReconnect(passedFlags, payload);
                 if (this.handler.onSetup) this.handler.onSetup(passedFlags, payload);
                 break;
+
             case 'OPEN':
                 if (this.handler.onSetup) this.handler.onSetup(passedFlags, payload);
                 if (this.handler.onOpen) this.handler.onOpen(passedFlags, payload);
                 if (this.handler.passReconnect) {
-                    this.sendSignaling('', [this.handler.reconnect? 'SHOULD_RECONNECT' : 'NO_RECONNECT'], true);
+                    this.sendSignaling('', [this.handler.shouldReconnect? 'SHOULD_RECONNECT' : 'NO_RECONNECT'], true);
                 }
                 this.sendSignaling('', ['OPEN'], true);
+                console.log(`Connection ${this.id} established.`);
                 break;
             case 'CLOSE':
+                console.log('CLOSE received');
                 if (this.handler.onClose) this.handler.onClose(passedFlags, payload);
                 this.closeConnection();
                 if (this.closeBackup) {
@@ -98,7 +101,7 @@ class WebRTCConnectionManager {
             flags.unshift('MESSAGE');
         }
         const fullMessage = flags.reduce((msg, flag) => `${msg}${flag} | `, '') + message;
-        this.signalingChannel.send(fullMessage);
+        this.signaling.send(fullMessage);
     }
 
     closeConnection() {

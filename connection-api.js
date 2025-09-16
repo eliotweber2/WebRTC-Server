@@ -1,10 +1,12 @@
 const express = require('express');
 const WebRTCConnectionManager = require('./wrtc-connection-manager');
+const crypto = require('crypto');
 
 const app = express();
 app.use(express.json());
 const port = 3000;
 const prefix = '/api';
+
 
 const servers = {
   iceServers: [
@@ -12,17 +14,14 @@ const servers = {
   ]
 };
 
-let currId = 0;
 const connections = {};
 
 function getHandler(type) {
   return {
     onSignalMessage: (msg) => console.log(`Received ${type} message:`, msg),
-    onSignalClose: () => console.log(`Closed ${type} connection`),
-    onSignalError: (err) => console.error(`Error in ${type} connection:`, err),
     onDataMessage: (msg) => console.log(`Received ${type} data message:`, msg),
-    onDataClose: () => console.log(`Closed ${type} data channel`),
-    onDataError: (err) => console.error(`Error in ${type} data channel:`, err),
+    onClose: () => console.log(`Closed ${type} connection`),
+    onError: (err) => console.error(`Error in ${type} connection:`, err),
 
     passReconnect: true,
     shouldReconnect: true
@@ -34,11 +33,10 @@ app.get(`/`, (req, res) => {
 });
 
 app.post(`${prefix}/new-connection`, async (req, res) => {
-  // Handle new connection logic here
-  console.log('Creating new connection');
   const handler = getHandler('default');
-  const newConnection = new WebRTCConnectionManager(currId++, handler, servers);
+  const newConnection = new WebRTCConnectionManager(crypto.randomUUID(), handler, servers);
   connections[newConnection.id] = newConnection;
+  console.log(`Created new connection: ${newConnection.id}...`);
   res.send(
     { id: newConnection.id, offer: await newConnection.getOffer() },
   );
@@ -72,9 +70,10 @@ app.get(`${prefix}/connections/:id/candidates`, (req, res) => {
 app.post(`${prefix}/connections/:id/reconnect`, async (req, res) => {
   const { id } = req.params;
   const connection = connections[id];
+  console.log(`Attempting to reconnect ${id}...`);
   if (connection) {
       connection.setupConnection(servers);
-      res.status(200).send({ id, status: 'reconnecting' });
+      res.status(200).send({ id, offer: await connection.getOffer() });
   } else {
       res.status(404).send({ error: 'Connection not found' });
   }
@@ -94,5 +93,12 @@ app.delete(`${prefix}/connections/:id`, (req, res) => {
 });
 
 const server = app.listen(port, () => {
-  console.log(`Server running at http://localhost:${port}${prefix}/`);
+  console.log('Server running!');
 });
+
+let address = server.address().address;
+if (address == '::') {
+  address = 'localhost';
+}
+
+console.log(`Server listening at http://${address}:${port}`);
